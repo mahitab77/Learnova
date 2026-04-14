@@ -148,6 +148,26 @@ export type ParentNotificationsResponse = {
   }>;
 };
 
+export type ParentSessionRatingData = {
+  canRate: boolean;
+  editableUntil: string | null;
+  rating: {
+    stars: number;
+    comment: string | null;
+  } | null;
+};
+
+export type ParentSaveSessionRatingData = {
+  rating: {
+    stars: number;
+    comment: string | null;
+  };
+  summary: {
+    ratingAvg: number | null;
+    ratingCount: number;
+  };
+};
+
 // ----------------------------------------------------------------------------
 // URL base
 // ----------------------------------------------------------------------------
@@ -389,6 +409,28 @@ export const parentService = {
     return apiFetch<void>(`${PARENT_BASE}/notifications/read-all`, {
       method: "PATCH",
     });
+  },
+
+  getLessonSessionRating(sessionId: number) {
+    return apiFetch<ParentSessionRatingData>(
+      `${PARENT_BASE}/lesson-sessions/${encodeURIComponent(String(sessionId))}/rating`
+    );
+  },
+
+  upsertLessonSessionRating(
+    sessionId: number,
+    payload: { stars: number; comment: string | null }
+  ) {
+    return apiFetch<ParentSaveSessionRatingData>(
+      `${PARENT_BASE}/lesson-sessions/${encodeURIComponent(String(sessionId))}/rating`,
+      {
+        method: "POST",
+        jsonBody: {
+          stars: payload.stars,
+          comment: payload.comment,
+        },
+      }
+    );
   },
 
 };

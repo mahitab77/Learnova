@@ -6,7 +6,11 @@
 import { Router } from "express";
 import { requireStudentSession } from "../middlewares/student.js";
 import { validateRequest } from "../middlewares/requestValidation.js";
-import { validateStudentLessonRequest } from "../validation/highRiskMutations.js";
+import { ratingSubmitRateLimit } from "../middlewares/rateLimit.js";
+import {
+  validateLessonSessionRating,
+  validateStudentLessonRequest,
+} from "../validation/highRiskMutations.js";
 
 import {
   getStudentDashboard,
@@ -118,7 +122,12 @@ router.get("/lessons/requests/pending", getMyPendingLessonRequests);
 router.post("/lessons/requests/:id/cancel", cancelMyLessonRequest);
 router.post("/lessons/sessions/:id/cancel", cancelMyScheduledSession);
 router.get("/lesson-sessions/:sessionId/rating", getStudentLessonSessionRating);
-router.post("/lesson-sessions/:sessionId/rating", upsertStudentLessonSessionRating);
+router.post(
+  "/lesson-sessions/:sessionId/rating",
+  ratingSubmitRateLimit,
+  validateRequest(validateLessonSessionRating),
+  upsertStudentLessonSessionRating
+);
 
 /* =============================================================================
  * Backward-compat aliases

@@ -28,6 +28,10 @@ import paymentService, {
   type PaymentStatus,
   type RecoveryGuidance,
 } from "@/src/services/paymentService";
+import parentService, {
+  type ParentSaveSessionRatingData,
+  type ParentSessionRatingData,
+} from "@/src/services/parentService";
 import PaymentStatusBadge from "@/src/components/payment/PaymentStatusBadge";
 
 // ---------------------------------------------------------------------------
@@ -53,6 +57,16 @@ const T = {
     statusFailed:       "Payment failed — please try again",
     statusRefunded:     "Refund processed",
     statusPending:      "Awaiting payment confirmation",
+    ratingTitle:        "Rate this lesson",
+    ratingWindow:       "Ratings can be submitted or edited within 7 days of eligible completion.",
+    ratingNotEligible:  "Rating is currently unavailable for this session.",
+    ratingComment:      "Optional comment",
+    ratingPlaceholder:  "Share feedback about the teacher (optional)",
+    ratingSubmit:       "Submit rating",
+    ratingUpdate:       "Update rating",
+    ratingLoading:      "Loading rating status...",
+    ratingSaving:       "Saving...",
+    ratingSaved:        "Rating saved successfully.",
   },
   ar: {
     title:              "حالة دفع الحصة",
@@ -73,6 +87,16 @@ const T = {
     statusFailed:       "فشلت عملية الدفع — يرجى المحاولة مرة أخرى",
     statusRefunded:     "تمت معالجة الاسترداد",
     statusPending:      "في انتظار تأكيد الدفع",
+    ratingTitle:        "تقييم هذه الحصة",
+    ratingWindow:       "يمكن إضافة أو تعديل التقييم خلال 7 أيام من اكتمال الحصة المؤهلة.",
+    ratingNotEligible:  "التقييم غير متاح حالياً لهذه الحصة.",
+    ratingComment:      "تعليق اختياري",
+    ratingPlaceholder:  "شارك ملاحظاتك عن المعلم (اختياري)",
+    ratingSubmit:       "إرسال التقييم",
+    ratingUpdate:       "تحديث التقييم",
+    ratingLoading:      "جارٍ تحميل حالة التقييم...",
+    ratingSaving:       "جارٍ الحفظ...",
+    ratingSaved:        "تم حفظ التقييم بنجاح.",
   },
 } as const;
 
@@ -99,6 +123,13 @@ function CheckoutPageContent() {
   const [loading,       setLoading]       = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error,         setError]         = useState<string | null>(null);
+  const [ratingData, setRatingData] = useState<ParentSessionRatingData | null>(null);
+  const [ratingLoading, setRatingLoading] = useState(false);
+  const [ratingSaving, setRatingSaving] = useState(false);
+  const [ratingError, setRatingError] = useState<string | null>(null);
+  const [ratingNotice, setRatingNotice] = useState<string | null>(null);
+  const [ratingStars, setRatingStars] = useState(0);
+  const [ratingComment, setRatingComment] = useState("");
   // Incrementing this triggers a data re-fetch after mutations.
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -135,6 +166,68 @@ function CheckoutPageContent() {
     void run();
     return () => { cancelled = true; };
   }, [sessionLoading, authenticated, validSessionId, sessionId, refreshKey]);
+
+  useEffect(() => {
+    if (sessionLoading || !authenticated || !validSessionId) return;
+    let cancelled = false;
+
+    async function run() {
+      setRatingLoading(true);
+      setRatingError(null);
+      setRatingNotice(null);
+
+      const result = await parentService.getLessonSessionRating(sessionId);
+      if (cancelled) return;
+
+      if (!result.success || !result.data) {
+        setRatingError(result.message || "Could not load rating status.");
+        setRatingLoading(false);
+        return;
+      }
+
+      setRatingData(result.data);
+      setRatingStars(result.data.rating?.stars ?? 0);
+      setRatingComment(result.data.rating?.comment ?? "");
+      setRatingLoading(false);
+    }
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionLoading, authenticated, validSessionId, sessionId, refreshKey]);
+
+  async function handleRatingSubmit() {
+    if (!ratingData?.canRate || ratingStars < 1) return;
+    setRatingSaving(true);
+    setRatingError(null);
+    setRatingNotice(null);
+
+    const result = await parentService.upsertLessonSessionRating(sessionId, {
+      stars: ratingStars,
+      comment: ratingComment.trim() ? ratingComment.trim() : null,
+    });
+
+    if (!result.success || !result.data) {
+      setRatingError(result.message || "Could not save rating.");
+      setRatingSaving(false);
+      return;
+    }
+
+    const saved = result.data as ParentSaveSessionRatingData;
+    setRatingData((prev) =>
+      prev
+        ? {
+            ...prev,
+            rating: saved.rating,
+          }
+        : prev
+    );
+    setRatingStars(saved.rating.stars);
+    setRatingComment(saved.rating.comment ?? "");
+    setRatingNotice(t.ratingSaved);
+    setRatingSaving(false);
+  }
 
   // -------------------------------------------------------------------------
   // Request refund
@@ -263,6 +356,79 @@ function CheckoutPageContent() {
                     <PaymentStatusBadge status={refund.status} lang={lang} size="md" />
                   </div>
                 )}
+
+                {/* Parent rating panel */}
+                <div className="rounded-lg border border-[#111624]/10 bg-white p-4">
+                  <h3 className="text-sm font-semibold text-[#111624]">{t.ratingTitle}</h3>
+                  <p className="mt-1 text-xs text-[#111624]/60">{t.ratingWindow}</p>
+
+                  {ratingLoading ? (
+                    <p className="mt-3 text-xs text-[#111624]/60">{t.ratingLoading}</p>
+                  ) : (
+                    <>
+                      {ratingData?.editableUntil && (
+                        <p className="mt-2 text-xs text-[#111624]/50">
+                          {lang === "ar"
+                            ? `متاح حتى: ${new Date(ratingData.editableUntil).toLocaleDateString("ar-EG")}`
+                            : `Editable until: ${new Date(ratingData.editableUntil).toLocaleDateString("en-GB")}`}
+                        </p>
+                      )}
+
+                      <div className="mt-3 flex items-center gap-1">
+                        {[1, 2, 3, 4, 5].map((value) => (
+                          <button
+                            key={value}
+                            type="button"
+                            disabled={!ratingData?.canRate || ratingSaving}
+                            onClick={() => setRatingStars(value)}
+                            className={`text-2xl ${
+                              value <= ratingStars ? "text-amber-400" : "text-slate-300"
+                            }`}
+                            aria-label={`${value} star`}
+                          >
+                            ★
+                          </button>
+                        ))}
+                      </div>
+
+                      <label className="mt-3 block text-xs font-medium text-[#111624]/70">
+                        {t.ratingComment}
+                      </label>
+                      <textarea
+                        value={ratingComment}
+                        onChange={(event) => setRatingComment(event.target.value)}
+                        disabled={!ratingData?.canRate || ratingSaving}
+                        rows={4}
+                        maxLength={1000}
+                        placeholder={t.ratingPlaceholder}
+                        className="mt-1 w-full rounded-lg border border-[#111624]/15 px-3 py-2 text-sm outline-none focus:border-[#08ABD3] disabled:bg-slate-50"
+                      />
+
+                      {!ratingData?.canRate && (
+                        <p className="mt-2 text-xs text-amber-700">{t.ratingNotEligible}</p>
+                      )}
+                      {ratingError && (
+                        <p className="mt-2 text-xs text-red-700">{ratingError}</p>
+                      )}
+                      {ratingNotice && (
+                        <p className="mt-2 text-xs text-green-700">{ratingNotice}</p>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => void handleRatingSubmit()}
+                        disabled={!ratingData?.canRate || ratingSaving || ratingStars < 1}
+                        className="mt-3 rounded-xl bg-[#08ABD3] px-4 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {ratingSaving
+                          ? t.ratingSaving
+                          : ratingData?.rating
+                            ? t.ratingUpdate
+                            : t.ratingSubmit}
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             )}
           </div>

@@ -1,8 +1,12 @@
 // src/routes/parent.routes.js
 import express from "express";
 import { requireSessionUser } from "../middlewares/auth.js";
+import { ratingSubmitRateLimit } from "../middlewares/rateLimit.js";
 import { validateRequest } from "../middlewares/requestValidation.js";
-import { validateParentTeacherChange } from "../validation/highRiskMutations.js";
+import {
+  validateLessonSessionRating,
+  validateParentTeacherChange,
+} from "../validation/highRiskMutations.js";
 
 import {
   ensureParentProfile,
@@ -82,7 +86,12 @@ router.get("/assignments", getParentAssignments);
 router.get("/teacher-options", getParentTeacherOptions);
 router.post("/teacher-options/select", selectParentTeacherOption);
 router.get("/lesson-sessions/:sessionId/rating", getParentLessonSessionRating);
-router.post("/lesson-sessions/:sessionId/rating", upsertParentLessonSessionRating);
+router.post(
+  "/lesson-sessions/:sessionId/rating",
+  ratingSubmitRateLimit,
+  validateRequest(validateLessonSessionRating),
+  upsertParentLessonSessionRating
+);
 
 // Announcements (parents)
 router.get("/announcements", getParentAnnouncements);

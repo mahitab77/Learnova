@@ -43,3 +43,9 @@ export const registerRateLimit = createJsonLimiter({
   max: intFromEnv("AUTH_REGISTER_RATE_MAX", 20),
   message: "Too many registration attempts. Please wait and try again.",
 });
+
+export const ratingSubmitRateLimit = createJsonLimiter({
+  windowMs: intFromEnv("RATING_SUBMIT_RATE_WINDOW_MS", 15 * 60 * 1000),
+  max: intFromEnv("RATING_SUBMIT_RATE_MAX", 20),
+  message: "Too many rating submissions. Please wait and try again.",
+});

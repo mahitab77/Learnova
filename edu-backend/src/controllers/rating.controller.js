@@ -308,6 +308,20 @@ async function getTeacherRatingSummary(conn, teacherId) {
   };
 }
 
+async function acquireSessionRatingLock(conn, sessionId) {
+  const lockKey = `teacher_rating_session_${Number(sessionId)}`;
+  const [rows] = await conn.query(`SELECT GET_LOCK(?, 5) AS lock_acquired`, [lockKey]);
+  const acquired = Number(rows?.[0]?.lock_acquired) === 1;
+  return acquired ? lockKey : null;
+}
+
+async function releaseSessionRatingLock(conn, lockKey) {
+  if (!lockKey) return;
+  try {
+    await conn.query(`DO RELEASE_LOCK(?)`, [lockKey]);
+  } catch (_) {}
+}
+
 async function buildStudentContext(conn, userId, sessionId, { lock = false } = {}) {
   const actor = await loadStudentActor(conn, userId);
   if (!actor) return { kind: "actor_missing" };
@@ -444,8 +458,17 @@ async function saveRatingForContext(req, res, actorLabel) {
 
   const conn = await pool.getConnection();
   let txStarted = false;
+  let advisoryLockKey = null;
 
   try {
+    advisoryLockKey = await acquireSessionRatingLock(conn, sessionId);
+    if (!advisoryLockKey) {
+      return res.status(409).json({
+        success: false,
+        message: "Another rating update is in progress for this session. Please retry.",
+      });
+    }
+
     await conn.beginTransaction();
     txStarted = true;
 
@@ -553,6 +576,7 @@ async function saveRatingForContext(req, res, actorLabel) {
     logErr(`${actorLabel}.save`, err);
     return serverError(res);
   } finally {
+    await releaseSessionRatingLock(conn, advisoryLockKey);
     conn.release();
   }
 }

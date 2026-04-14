@@ -243,6 +243,34 @@ export function validateStudentLessonRequest({ body }) {
   return { errors };
 }
 
+export function validateLessonSessionRating({ params, body }) {
+  const errors = [];
+  requirePositiveId(params.sessionId, "sessionId", errors);
+
+  const stars = Number(body?.stars);
+  if (!Number.isInteger(stars) || stars < 1 || stars > 5) {
+    errors.push({
+      field: "stars",
+      message: "stars must be an integer between 1 and 5.",
+    });
+  }
+
+  const comment = body?.comment;
+  if (comment !== undefined && comment !== null && typeof comment !== "string") {
+    errors.push({
+      field: "comment",
+      message: "comment must be a string when provided.",
+    });
+  } else if (typeof comment === "string" && comment.length > 1000) {
+    errors.push({
+      field: "comment",
+      message: "comment must not exceed 1000 characters.",
+    });
+  }
+
+  return { errors };
+}
+
 function validateScheduleShape(body, errors, allowPartial) {
   if (!allowPartial || body.weekday !== undefined) {
     if (toPositiveInt(body.weekday) == null) {
