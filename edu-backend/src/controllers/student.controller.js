@@ -2084,6 +2084,18 @@ export async function studentGetTeacherAvailability(req, res) {
 
     if (from && !isValidDateStr(from)) return badRequest(res, "from must be YYYY-MM-DD");
     if (to && !isValidDateStr(to)) return badRequest(res, "to must be YYYY-MM-DD");
+    if (!from || !to) {
+      return badRequest(res, "from and to are required for availability queries.");
+    }
+    const fromDate = new Date(`${from}T00:00:00.000Z`);
+    const toDate = new Date(`${to}T00:00:00.000Z`);
+    if (Number.isNaN(fromDate.getTime()) || Number.isNaN(toDate.getTime()) || fromDate > toDate) {
+      return badRequest(res, "Invalid date range.");
+    }
+    const rangeDays = Math.floor((toDate.getTime() - fromDate.getTime()) / (24 * 60 * 60 * 1000));
+    if (rangeDays > 31) {
+      return badRequest(res, "Maximum availability range is 31 days.");
+    }
 
     // DEBUG helpers (only in non-production)
     if (!IS_PRODUCTION) {
@@ -2644,6 +2656,14 @@ export async function requestLessonSession(req, res) {
 
 export async function getMyPendingLessonRequests(req, res) {
   try {
+    const requestedLimit = Number.parseInt(String(req.query?.limit ?? ""), 10);
+    const requestedOffset = Number.parseInt(String(req.query?.offset ?? ""), 10);
+    const limit =
+      Number.isFinite(requestedLimit) && requestedLimit > 0
+        ? Math.min(requestedLimit, 100)
+        : 50;
+    const offset =
+      Number.isFinite(requestedOffset) && requestedOffset >= 0 ? requestedOffset : 0;
     const userId = getAuthUserId(req);
     if (!userId) return unauthorized(res);
 
@@ -2711,8 +2731,10 @@ export async function getMyPendingLessonRequests(req, res) {
           AND ls.student_id = ?
 
         ORDER BY ls.starts_at ASC
+        LIMIT ?
+        OFFSET ?
         `,
-        [actorStudentId]
+        [actorStudentId, limit, offset]
       );
       rows = r || [];
     } else {
@@ -2753,8 +2775,10 @@ export async function getMyPendingLessonRequests(req, res) {
           )
 
         ORDER BY ls.starts_at ASC
+        LIMIT ?
+        OFFSET ?
         `,
-        [actorParentId]
+        [actorParentId, limit, offset]
       );
       rows = r || [];
     }
@@ -2801,7 +2825,7 @@ export async function getMyPendingLessonRequests(req, res) {
       };
     });
 
-    return res.json({ success: true, data });
+    return res.json({ success: true, data, pagination: { limit, offset } });
   } catch (err) {
     return handleApiError(res, err, "getMyPendingLessonRequests");
   }

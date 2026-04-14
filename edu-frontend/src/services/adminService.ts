@@ -449,11 +449,11 @@ async function deleteTeacherSchedule(id: number): Promise<void> {
 // ADMIN LESSON SESSIONS
 // ============================================================================
 async function getAdminLessonSessions(): Promise<AdminLessonSessionRow[]> {
-  return unwrapData("/admin/lesson-sessions");
+  return unwrapData("/admin/lesson-sessions?limit=100&offset=0");
 }
 
 async function getPendingLessonRequests(): Promise<unknown[]> {
-  return unwrapData("/admin/lesson-requests/pending");
+  return unwrapData("/admin/lesson-requests/pending?limit=100&offset=0");
 }
 
 async function approveLessonRequest(id: number): Promise<void> {
@@ -474,7 +474,7 @@ async function cancelLessonSession(id: number, reason?: string): Promise<void> {
 // ANNOUNCEMENTS
 // ============================================================================
 async function getAnnouncements(): Promise<AnnouncementRow[]> {
-  return unwrapData("/admin/announcements");
+  return unwrapData("/admin/announcements?limit=50&offset=0");
 }
 
 async function createAnnouncement(input: {

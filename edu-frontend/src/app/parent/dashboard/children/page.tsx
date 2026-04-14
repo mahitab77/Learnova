@@ -17,7 +17,7 @@ import { parentDashboardTexts } from "../parentDashboardTexts";
 import { useSession } from "@/src/hooks/useSession";
 import {
   useParentStudents,
-  useStudentSelections,
+  useParentSelectionsMap,
   useParentSwitchToStudent,
 } from "../parentDashboardHooks";
 import type { ParentStudent } from "../parentDashboardTypes";
@@ -36,6 +36,12 @@ function ParentChildrenPageContent() {
 
   const { loading: sessionLoading, authenticated } = useSession();
   const { students, loading, error } = useParentStudents();
+  const studentIds = useMemo(() => students.map((s) => s.studentId), [students]);
+  const {
+    rowsByStudentId,
+    loading: selectionsLoading,
+    error: selectionsError,
+  } = useParentSelectionsMap(studentIds);
   const { switchToStudent, switching, error: switchError } =
     useParentSwitchToStudent();
 
@@ -98,17 +104,17 @@ function ParentChildrenPageContent() {
 
   interface ChildSelectionsProps {
     student: ParentStudent;
+    rows: Array<{
+      id: number;
+      subjectId: number;
+      subjectNameAr: string;
+      subjectNameEn: string;
+      teacherId: number | null;
+      teacherName: string | null;
+    }>;
   }
 
-  function ChildSelections({ student }: ChildSelectionsProps) {
-    const studentIdForSelections = student.studentId;
-
-    const {
-      rows,
-      loading: selectionsLoading,
-      error: selectionsError,
-    } = useStudentSelections(studentIdForSelections);
-
+  function ChildSelections({ student, rows }: ChildSelectionsProps) {
     // Error & Loading States
     if (selectionsError === "NOT_AUTHENTICATED") {
       return (
@@ -275,6 +281,7 @@ function ParentChildrenPageContent() {
   }
 
   function ChildCard({ student }: ChildCardProps) {
+    const rows = rowsByStudentId[student.studentId] ?? [];
     const isSwitching =
       student.studentUserId != null &&
       switchingStudentUserId === student.studentUserId;
@@ -419,7 +426,7 @@ function ParentChildrenPageContent() {
 
         {/* Subjects */}
         <div className="border-t border-emerald-100 p-4">
-          <ChildSelections student={student} />
+          <ChildSelections student={student} rows={rows} />
         </div>
 
         {/* Add Subject */}
@@ -483,7 +490,7 @@ function ParentChildrenPageContent() {
       {/* Content */}
       <section className="rounded-2xl border border-emerald-100 bg-linear-to-b from-emerald-50/20 to-white p-5 shadow-sm backdrop-blur-sm">
         {/* Loading */}
-        {(sessionLoading || loading) && !notAuthed && (
+        {(sessionLoading || loading || selectionsLoading) && !notAuthed && (
           <div className="flex flex-col items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
             <p className="mt-3 text-sm text-slate-500">

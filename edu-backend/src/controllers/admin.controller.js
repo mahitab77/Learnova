@@ -112,6 +112,7 @@ export const createAnnouncementAdmin = async (req, res) => {
  */
 export const getAnnouncementsAdmin = async (req, res) => {
   try {
+    const { limit, offset } = getPagination(req, { defaultLimit: 50, maxLimit: 200 });
     const [rows] = await pool.query(
       `
       SELECT
@@ -123,11 +124,14 @@ export const getAnnouncementsAdmin = async (req, res) => {
         created_at
       FROM announcements
       ORDER BY created_at DESC
-      LIMIT 200
+      LIMIT ?
+      OFFSET ?
       `
+      ,
+      [limit, offset]
     );
 
-    return res.json({ success: true, data: rows });
+    return res.json({ success: true, data: rows, pagination: { limit, offset } });
   } catch (err) {
     console.error("getAnnouncementsAdmin error:", err);
     return res.status(500).json({ success: false, message: "Server error." });
@@ -1748,58 +1752,56 @@ export const deleteTeacherScheduleAdmin = async (req, res) => {
  */
 export const getAdminOverview = async (req, res) => {
   try {
-    // Active students
-    const [[studentsRow]] = await pool.query(
-      `
-      SELECT COUNT(*) AS cnt
-      FROM users
-      WHERE role = 'student' AND is_active = 1
-      `
-    );
-
-    // Active parents
-    const [[parentsRow]] = await pool.query(
-      `
-      SELECT COUNT(*) AS cnt
-      FROM users
-      WHERE role = 'parent' AND is_active = 1
-      `
-    );
-
-    // Active teachers (approved + active)
-    const [[teachersRow]] = await pool.query(
-      `
-      SELECT COUNT(*) AS cnt
-      FROM teachers
-      WHERE is_active = 1 AND status = 'approved'
-      `
-    );
-
-    // Subjects
-    const [[subjectsRow]] = await pool.query(
-      `
-      SELECT COUNT(*) AS cnt
-      FROM subjects
-      `
-    );
-
-    // Pending parent requests
-    const [[pendingParentReqRow]] = await pool.query(
-      `
-      SELECT COUNT(*) AS cnt
-      FROM parent_change_requests
-      WHERE status = 'pending'
-      `
-    );
-
-    // Pending teacher approvals
-    const [[pendingTeacherRow]] = await pool.query(
-      `
-      SELECT COUNT(*) AS cnt
-      FROM teachers
-      WHERE status = 'pending_review'
-      `
-    );
+    const [
+      [[studentsRow]],
+      [[parentsRow]],
+      [[teachersRow]],
+      [[subjectsRow]],
+      [[pendingParentReqRow]],
+      [[pendingTeacherRow]],
+    ] = await Promise.all([
+      pool.query(
+        `
+        SELECT COUNT(*) AS cnt
+        FROM users
+        WHERE role = 'student' AND is_active = 1
+        `
+      ),
+      pool.query(
+        `
+        SELECT COUNT(*) AS cnt
+        FROM users
+        WHERE role = 'parent' AND is_active = 1
+        `
+      ),
+      pool.query(
+        `
+        SELECT COUNT(*) AS cnt
+        FROM teachers
+        WHERE is_active = 1 AND status = 'approved'
+        `
+      ),
+      pool.query(
+        `
+        SELECT COUNT(*) AS cnt
+        FROM subjects
+        `
+      ),
+      pool.query(
+        `
+        SELECT COUNT(*) AS cnt
+        FROM parent_change_requests
+        WHERE status = 'pending'
+        `
+      ),
+      pool.query(
+        `
+        SELECT COUNT(*) AS cnt
+        FROM teachers
+        WHERE status = 'pending_review'
+        `
+      ),
+    ]);
 
     return res.json({
       success: true,
@@ -2473,6 +2475,7 @@ export const cancelLessonSessionAdmin = async (req, res) => {
  */
 export const getAdminLessonSessionsAdmin = async (req, res) => {
   try {
+    const { limit, offset } = getPagination(req, { defaultLimit: 100, maxLimit: 300 });
     const [rows] = await pool.query(
       `
       SELECT
@@ -2500,11 +2503,14 @@ export const getAdminLessonSessionsAdmin = async (req, res) => {
       JOIN subjects s ON s.id = ls.subject_id
       LEFT JOIN users u ON u.id = ls.created_by_user_id
       ORDER BY ls.starts_at DESC
-      LIMIT 500
+      LIMIT ?
+      OFFSET ?
       `
+      ,
+      [limit, offset]
     );
 
-    return res.json({ success: true, data: rows });
+    return res.json({ success: true, data: rows, pagination: { limit, offset } });
   } catch (err) {
     console.error("getAdminLessonSessionsAdmin error:", err);
     return res.status(500).json({ success: false, message: "Server error." });

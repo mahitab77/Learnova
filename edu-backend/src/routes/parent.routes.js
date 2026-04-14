@@ -12,6 +12,7 @@ import {
   ensureParentProfile,
   getMyStudents,
   getStudentSelectionsAsParent,
+  getParentStudentsSelections,
 
   // Requests
   createChangeRequest,
@@ -68,6 +69,7 @@ router.post("/ensure-profile", ensureParentProfile);
 
 // Parent ↔ student management
 router.get("/students", getMyStudents);
+router.get("/students/selections", getParentStudentsSelections);
 
 // Student selections (subjects + chosen teachers)
 router.get("/student/:studentId/selections", getStudentSelectionsAsParent);

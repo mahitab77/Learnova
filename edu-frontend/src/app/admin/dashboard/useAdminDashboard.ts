@@ -105,6 +105,9 @@ export function useAdminDashboard(lang: Lang, t: LangTexts) {
   const [sessionError, setSessionError] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
+  const [loadedTabs, setLoadedTabs] = useState<Partial<Record<TabKey, boolean>>>({
+    overview: true,
+  });
 
   // -------------------------------------------------------------------------
   // OVERVIEW state
@@ -587,56 +590,89 @@ export function useAdminDashboard(lang: Lang, t: LangTexts) {
     [lang, loadModerators]
   );
 
-  // -------------------------------------------------------------------------
-  // Initial load
-  // -------------------------------------------------------------------------
+  const loadTabData = useCallback(
+    async (tab: TabKey) => {
+      switch (tab) {
+        case "overview":
+          await loadOverview();
+          break;
+        case "subjects":
+          await loadSubjects();
+          break;
+        case "teachers":
+          await Promise.all([loadTeachers(), loadAssignSubjects()]);
+          break;
+        case "approvals":
+          await loadPendingTeachers();
+          break;
+        case "assignments":
+          await loadTeacherAssignments();
+          break;
+        case "schedules":
+          await loadTeacherSchedules();
+          break;
+        case "sessions":
+          if (ENABLE_LESSON_SESSIONS_ENDPOINT) {
+            await loadLessonSessions();
+          }
+          break;
+        case "announcements":
+          await loadAnnouncements();
+          break;
+        case "notifications":
+          await loadAdminNotifications();
+          break;
+        case "requests":
+          await loadRequests();
+          break;
+        case "users":
+          await Promise.all([loadStudents(), loadParents(), loadParentStudentLinks()]);
+          break;
+        case "moderators":
+          await loadModerators();
+          break;
+        case "settings":
+          await loadAdminSettings();
+          break;
+        default:
+          break;
+      }
+    },
+    [
+      loadOverview,
+      loadSubjects,
+      loadTeachers,
+      loadAssignSubjects,
+      loadPendingTeachers,
+      loadTeacherAssignments,
+      loadTeacherSchedules,
+      loadLessonSessions,
+      loadAnnouncements,
+      loadAdminNotifications,
+      loadRequests,
+      loadStudents,
+      loadParents,
+      loadParentStudentLinks,
+      loadModerators,
+      loadAdminSettings,
+    ]
+  );
+
   useEffect(() => {
     if (!localChecked) return;
-
     if (!sessionChecked) {
       void checkAdminSession();
-      return;
     }
+  }, [localChecked, sessionChecked, checkAdminSession]);
 
-    if (sessionIsAdmin !== true) return;
+  useEffect(() => {
+    if (!sessionChecked || sessionIsAdmin !== true) return;
+    if (loadedTabs[activeTab]) return;
 
-    void loadSubjects();
-    void loadTeachers();
-    void loadPendingTeachers();
-    void loadTeacherAssignments();
-    void loadTeacherSchedules();
-    void loadAnnouncements();
-    void loadAdminNotifications();
-    void loadRequests();
-    void loadStudents();
-    void loadParents();
-    void loadParentStudentLinks();
-    void loadAdminSettings();
-    void loadModerators();
-
-    if (ENABLE_LESSON_SESSIONS_ENDPOINT) {
-      void loadLessonSessions();
-    }
-  }, [
-    localChecked,
-    sessionChecked,
-    sessionIsAdmin,
-    checkAdminSession,
-    loadSubjects,
-    loadTeachers,
-    loadPendingTeachers,
-    loadTeacherAssignments,
-    loadTeacherSchedules,
-    loadAnnouncements,
-    loadAdminNotifications,
-    loadRequests,
-    loadStudents,
-    loadParents,
-    loadParentStudentLinks,
-    loadAdminSettings,
-    loadLessonSessions,
-    loadModerators,
-  ]);
+    void loadTabData(activeTab).then(() => {
+      setLoadedTabs((prev) => ({ ...prev, [activeTab]: true }));
+    });
+  }, [activeTab, loadedTabs, loadTabData, sessionChecked, sessionIsAdmin]);
 
   // -------------------------------------------------------------------------
   // Handlers: Teacher approvals

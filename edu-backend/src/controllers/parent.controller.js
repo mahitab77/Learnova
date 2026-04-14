@@ -17,6 +17,18 @@ function isEnabledFlag(value) {
   return value === true || Number(value) === 1;
 }
 
+function getPagination(req, { defaultLimit = 50, maxLimit = 200 } = {}) {
+  const requestedLimit = Number.parseInt(String(req.query?.limit ?? ""), 10);
+  const requestedOffset = Number.parseInt(String(req.query?.offset ?? ""), 10);
+  const limit =
+    Number.isFinite(requestedLimit) && requestedLimit > 0
+      ? Math.min(requestedLimit, maxLimit)
+      : defaultLimit;
+  const offset =
+    Number.isFinite(requestedOffset) && requestedOffset >= 0 ? requestedOffset : 0;
+  return { limit, offset };
+}
+
 /* =============================================================================
  * Helper functions
  * =============================================================================
@@ -628,6 +640,97 @@ export const getStudentSelectionsAsParent = async (req, res) => {
   }
 };
 
+export const getParentStudentsSelections = async (req, res) => {
+  const user = req.user;
+
+  try {
+    const { user: authedUser, errorResponse } = requireParentOrAdmin(req, res);
+    if (!authedUser) return errorResponse;
+
+    const parent = await findParentByUserId(authedUser.id);
+    if (!parent) {
+      return res.json({ success: true, data: {} });
+    }
+
+    const rawStudentIds = String(req.query?.student_ids ?? "")
+      .split(",")
+      .map((item) => Number(item.trim()))
+      .filter((id) => Number.isFinite(id) && id > 0);
+
+    const uniqueStudentIds = [...new Set(rawStudentIds)];
+    if (!uniqueStudentIds.length) {
+      return res.status(400).json({
+        success: false,
+        message: "student_ids query parameter is required.",
+      });
+    }
+
+    const [linkedRows] = await pool.query(
+      `
+      SELECT student_id
+      FROM parent_students
+      WHERE parent_id = ?
+        AND student_id IN (?)
+      `,
+      [parent.id, uniqueStudentIds]
+    );
+
+    const linkedIds = [...new Set(linkedRows.map((row) => Number(row.student_id)).filter(Boolean))];
+    if (!linkedIds.length) {
+      return res.json({ success: true, data: {} });
+    }
+
+    const [rows] = await pool.query(
+      `
+      SELECT
+        ss.student_id,
+        COALESCE(sts.id, ss.id) AS id,
+        ss.subject_id,
+        subj.name_ar AS subject_name_ar,
+        subj.name_en AS subject_name_en,
+        sts.teacher_id AS teacher_id,
+        COALESCE(t.name, '') AS teacher_name,
+        NULL AS photo_url
+      FROM student_subjects ss
+      INNER JOIN subjects subj ON subj.id = ss.subject_id
+      LEFT JOIN student_teacher_selections sts
+        ON sts.student_id = ss.student_id
+       AND sts.subject_id = ss.subject_id
+      LEFT JOIN teachers t ON t.id = sts.teacher_id
+      WHERE ss.student_id IN (?)
+      ORDER BY ss.student_id, subj.name_en, subj.id
+      `,
+      [linkedIds]
+    );
+
+    const grouped = {};
+    for (const row of rows) {
+      const sid = Number(row.student_id);
+      if (!grouped[sid]) grouped[sid] = [];
+      grouped[sid].push({
+        id: row.id,
+        subject_id: row.subject_id,
+        subject_name_ar: row.subject_name_ar,
+        subject_name_en: row.subject_name_en,
+        teacher_id: row.teacher_id,
+        teacher_name: row.teacher_name,
+        photo_url: row.photo_url,
+      });
+    }
+
+    return res.json({ success: true, data: grouped });
+  } catch (err) {
+    console.error("getParentStudentsSelections error:", {
+      error: err,
+      userId: user?.id,
+    });
+    return res.status(500).json({
+      success: false,
+      message: "Could not load student selections. Please try again later.",
+    });
+  }
+};
+
 /* =============================================================================
  * NEW: POST /parent/requests  -> createParentRequest
  * -----------------------------------------------------------------------------
@@ -999,6 +1102,7 @@ export const getParentRequests = async (req, res) => {
     // We return both names so UI can show:
     //   Current: X  -> Requested: Y
     // -------------------------------------------------------------------------
+    const { limit, offset } = getPagination(req, { defaultLimit: 50, maxLimit: 200 });
     const [rows] = await pool.query(
       `
       SELECT
@@ -1029,8 +1133,10 @@ export const getParentRequests = async (req, res) => {
 
       WHERE r.parent_id = ?
       ORDER BY r.created_at DESC, r.id DESC
+      LIMIT ?
+      OFFSET ?
       `,
-      [parent.id]
+      [parent.id, limit, offset]
     );
 
     // -------------------------------------------------------------------------
@@ -1039,6 +1145,7 @@ export const getParentRequests = async (req, res) => {
     return res.json({
       success: true,
       data: rows,
+      pagination: { limit, offset },
     });
   } catch (err) {
     console.error("getParentRequests error:", {
@@ -1077,6 +1184,7 @@ export const getParentAssignments = async (req, res) => {
       });
     }
 
+    const { limit, offset } = getPagination(req, { defaultLimit: 50, maxLimit: 200 });
     // 1) Get child student_ids for this parent
     const [links] = await pool.query(
       `
@@ -1158,9 +1266,11 @@ export const getParentAssignments = async (req, res) => {
       return bTs - aTs;
     });
 
+    const paged = all.slice(offset, offset + limit);
     return res.json({
       success: true,
-      data: all,
+      data: paged,
+      pagination: { limit, offset, total: all.length },
     });
   } catch (err) {
     console.error("getParentAssignments error:", {

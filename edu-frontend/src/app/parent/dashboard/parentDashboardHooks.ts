@@ -324,6 +324,80 @@ export function useStudentSelections(studentId: number | null) {
   return { rows, loading, error };
 }
 
+export function useParentSelectionsMap(studentIds: number[]) {
+  const [rowsByStudentId, setRowsByStudentId] = useState<Record<number, ParentSelection[]>>({});
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  type ApiRow = {
+    id: number;
+    subject_id: number;
+    subject_name_ar: string;
+    subject_name_en: string;
+    teacher_id: number | null;
+    teacher_name: string | null;
+    photo_url: string | null;
+  };
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const uniqueIds = [...new Set(studentIds.filter((id) => Number.isFinite(id) && id > 0))];
+
+    if (!uniqueIds.length) {
+      setRowsByStudentId({});
+      setError(null);
+      setLoading(false);
+      return () => controller.abort();
+    }
+
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const payload = await fetchJson<Record<string, ApiRow[]>>({
+          url: `${API_BASE}/parent/students/selections?student_ids=${encodeURIComponent(uniqueIds.join(","))}`,
+          method: "GET",
+          signal: controller.signal,
+        });
+
+        const normalized: Record<number, ParentSelection[]> = {};
+        for (const [studentIdKey, selections] of Object.entries(payload || {})) {
+          const sid = Number(studentIdKey);
+          if (!Number.isFinite(sid)) continue;
+          normalized[sid] = Array.isArray(selections)
+            ? selections.map((r) => ({
+                id: r.id,
+                subjectId: r.subject_id,
+                subjectNameAr: r.subject_name_ar,
+                subjectNameEn: r.subject_name_en,
+                teacherId: r.teacher_id,
+                teacherName: r.teacher_name,
+                photoUrl: r.photo_url,
+              }))
+            : [];
+        }
+
+        setRowsByStudentId(normalized);
+      } catch (err: unknown) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        if (err instanceof Error && err.message === "NOT_AUTHENTICATED") {
+          setError("NOT_AUTHENTICATED");
+          return;
+        }
+        setError(err instanceof Error ? err.message : "Unknown error while loading selections.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void load();
+    return () => controller.abort();
+  }, [studentIds]);
+
+  return { rowsByStudentId, loading, error };
+}
+
 /* ===========================================================================
  * useParentAssignments
  * ========================================================================== */
@@ -341,7 +415,7 @@ export function useParentAssignments() {
 
       try {
         const data = await fetchJson<ParentAssignment[]>({
-          url: `${API_BASE}/parent/assignments`,
+          url: `${API_BASE}/parent/assignments?limit=50&offset=0`,
           method: "GET",
           signal: controller.signal,
         });
@@ -420,7 +494,7 @@ export function useParentRequests() {
 
       try {
         const data = await fetchJson<ApiRow[]>({
-          url: `${API_BASE}/parent/requests`,
+          url: `${API_BASE}/parent/requests?limit=50&offset=0`,
           method: "GET",
           signal: controller.signal,
         });
