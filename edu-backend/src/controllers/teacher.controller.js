@@ -265,15 +265,9 @@ async function requireTeacherContext(conn, req, res) {
     [userId]
   );
 
-  let teacher = tRows?.[0];
+  const teacher = tRows?.[0];
   if (!teacher) {
-    const name = user.full_name || "Teacher";
-    const [ins] = await conn.query(
-      `INSERT INTO teachers (user_id, name, status, is_active)
-       VALUES (?, ?, 'pending_review', 1)`,
-      [userId, name]
-    );
-    teacher = { id: ins.insertId, user_id: userId, status: "pending_review", is_active: 1 };
+    return { ok: false, response: forbidden(res, "Teacher profile not found") };
   }
 
   if (Number(teacher.is_active) !== 1) return { ok: false, response: forbidden(res, "Teacher profile is inactive") };
@@ -2728,6 +2722,7 @@ export async function cancelMyLessonSession(req, res) {
           SET status        = 'cancelled',
               cancel_reason  = COALESCE(?, cancel_reason),
               cancelled_by   = 'teacher',
+              cancelled_at   = NOW(),
               updated_by_user_id = ?
         WHERE id     = ?
           AND teacher_id = ?

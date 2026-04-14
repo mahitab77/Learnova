@@ -2378,6 +2378,30 @@ export async function requestLessonSession(req, res) {
       gradeLevelId,
     } = bookingContext.context;
 
+    // Serialize booking mutations on both teacher and student identities.
+    // This closes same-slot race windows across concurrent requests that target
+    // different schedules but the same teacher or same student.
+    await conn.query(
+      `
+      SELECT id
+      FROM teachers
+      WHERE id = ?
+      LIMIT 1
+      FOR UPDATE
+      `,
+      [normalizedTeacherId]
+    );
+    await conn.query(
+      `
+      SELECT id
+      FROM students
+      WHERE id = ?
+      LIMIT 1
+      FOR UPDATE
+      `,
+      [student.id]
+    );
+
     // -------------------------------------------------------------------------
     // 3) Validate schedule belongs to teacher + active (inside transaction)
     // -------------------------------------------------------------------------
@@ -2464,7 +2488,7 @@ export async function requestLessonSession(req, res) {
         AND status IN ('pending', 'scheduled', 'approved')
       LIMIT 1
       `,
-      [student.id, schId, sId, startsSql, endsSql]
+      [student.id, schId, normalizedSubjectId, startsSql, endsSql]
     );
     if (duplicate) {
       await conn.rollback();
@@ -2532,7 +2556,7 @@ export async function requestLessonSession(req, res) {
         AND end_time   > TIME(?)
       LIMIT 1
       `,
-      [tId, startsSql, endsSql, startsSql]
+      [normalizedTeacherId, startsSql, endsSql, startsSql]
     );
 
     if (blockedByException) {
@@ -2554,8 +2578,8 @@ export async function requestLessonSession(req, res) {
         (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
       `,
       [
-        tId,
-        sId,
+        normalizedTeacherId,
+        normalizedSubjectId,
         systemId,
         stageId,
         gradeLevelId, // may be NULL and that's fine
@@ -2576,7 +2600,7 @@ export async function requestLessonSession(req, res) {
     // -------------------------------------------------------------------------
     const [[teacherUser]] = await conn.query(
       `SELECT user_id, name FROM teachers WHERE id = ? LIMIT 1`,
-      [tId]
+      [normalizedTeacherId]
     );
 
     if (teacherUser?.user_id) {
@@ -2899,7 +2923,8 @@ export async function cancelMyLessonRequest(req, res) {
       SET status = 'cancelled',
           updated_by_user_id = ?,
           cancelled_by = ?,
-          cancel_reason = COALESCE(?, cancel_reason)
+          cancel_reason = COALESCE(?, cancel_reason),
+          cancelled_at = NOW()
       WHERE id = ?
         AND status = 'pending'
       `,
@@ -3078,6 +3103,7 @@ export async function cancelMyScheduledSession(req, res) {
           SET status       = 'cancelled',
               cancel_reason = COALESCE(?, cancel_reason),
               cancelled_by  = ?,
+              cancelled_at  = NOW(),
               updated_by_user_id = ?
         WHERE id     = ?
           AND status IN ('scheduled', 'approved')`,

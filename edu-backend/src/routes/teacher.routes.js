@@ -40,6 +40,8 @@ router.use("/lesson-requests", requireTeacherApproved);
 router.use("/homework", requireTeacherApproved);
 router.use("/quizzes", requireTeacherApproved);
 router.use("/students", requireTeacherApproved);
+router.use("/schedules", requireTeacherApproved);
+router.use("/schedule-exceptions", requireTeacherApproved);
 
 // ============================================================================
 // Profile

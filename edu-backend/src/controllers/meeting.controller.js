@@ -62,7 +62,7 @@ export function extractYouTubeId(raw) {
 //   - teacher whose teachers.id === lesson_sessions.teacher_id  (host role)
 //   - student whose students.id === lesson_sessions.student_id  (attendee)
 //   - parent linked via parent_students to that student          (attendee)
-//   - admin / moderator role (attendee, observer)
+//   - admin role (attendee, observer)
 // All other authenticated users receive 403.
 // Session existence is never confirmed to unauthorized callers (always 403,
 // never 404) to prevent session-ID enumeration.
@@ -114,8 +114,8 @@ export async function generateZoomSignature(req, res) {
     let authorized = false;
     let isHost     = false;
 
-    if (userRole === "admin" || userRole === "moderator") {
-      // Admins and moderators may observe any session as attendees.
+    if (userRole === "admin") {
+      // Admins may observe any session as attendees.
       authorized = true;
 
     } else if (userRole === "teacher") {

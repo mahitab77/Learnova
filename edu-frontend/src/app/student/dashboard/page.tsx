@@ -684,14 +684,12 @@ async function apiFetch<T>(args: {
           : undefined,
     });
 
-    if (isRecord(json) && "success" in json) {
-      const api = json as ApiResponse<unknown>;
-      if (!api.success) throw new Error(api.message || "Failed to load.");
-      return api.data as T;
+    if (!isRecord(json) || json.success !== true || !("data" in json)) {
+      throw new Error("Invalid API response shape.");
     }
 
-    if (json !== null) return json as T;
-    throw new Error("Empty response from server.");
+    const api = json as ApiResponse<unknown>;
+    return api.data as T;
   } catch (err) {
     if (isApiError(err) && (err.status === 401 || err.status === 403)) {
       throw new Error("NOT_AUTHENTICATED");

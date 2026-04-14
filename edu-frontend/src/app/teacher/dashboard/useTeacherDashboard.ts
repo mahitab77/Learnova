@@ -15,7 +15,7 @@
  * ✅ Proper API endpoints for teacher messages (notifications & announcements)
  * ✅ Correctly uses camelCase for messages as per teacherDashboardTypes.ts
  * ✅ No `any` types - fully type-safe
- * ✅ FIXED: Safe teacherApiFetch that handles envelope shape validation
+ * ✅ Strict API envelope validation for dashboard calls
  * ✅ FIXED: Announcements normalization for field consistency
  * ✅ FIXED: Crash-proof normalizeTeacherInbox with safe object property access
  * =============================================================================
@@ -35,7 +35,6 @@ import type {
   TeacherNotificationApiResponse,
   TeacherNotificationInbox,
   TeacherNotificationRow,
-  TeacherApiEnvelope,
   QuizRow,
   SlotOfferingRow as SlotOfferingPayloadRow,
   SlotOfferingsResponseRow,
@@ -283,12 +282,25 @@ function getProp(v: Record<string, unknown>, key: string): unknown {
 }
 
 /**
- * Unwraps data from API response (handles { data: ... } wrapper)
+ * Strictly unwraps canonical API envelopes:
+ * - { success: true, data: ... }
+ * - { ok: true, data: ... }
  */
 function unwrapData<T>(raw: unknown): T {
-  if (!isRecord(raw)) return raw as T;
-  if ("data" in raw) return raw.data as T;
-  return raw as T;
+  if (!isRecord(raw) || !("data" in raw)) {
+    throw new Error("Invalid API response shape.");
+  }
+
+  const success =
+    ("success" in raw && raw.success === true) ||
+    ("ok" in raw && raw.ok === true);
+
+  if (!success) {
+    const message = typeof raw.message === "string" ? raw.message : "Request failed";
+    throw new Error(message);
+  }
+
+  return raw.data as T;
 }
 
 /**
@@ -443,11 +455,7 @@ function getTeacherOperationalDeniedMessage(
 // -----------------------------------------------------------------------------
 
 /**
- * ✅ FIXED: Teacher-specific API wrapper that safely handles envelope responses
- * Validates the envelope shape at runtime before accessing .success
- * Accepts both:
- * 1) envelope: { success: boolean, data: T, message?: string }
- * 2) raw data directly (if controller doesn't wrap)
+ * Teacher-specific API wrapper with strict envelope enforcement.
  */
 async function teacherApiFetch<T>(
   url: string,
@@ -462,32 +470,14 @@ async function teacherApiFetch<T>(
 
   const body = jsonBody ? JSON.stringify(jsonBody) : fetchOptions.body;
 
-  // Fetch raw response without assuming envelope shape
+  // Fetch raw response and enforce envelope contract
   const res = await apiFetch<unknown>(url, {
     ...fetchOptions,
     headers,
     body,
   });
 
-  const unwrapped = unwrapData<unknown>(res);
-
-  // ✅ SAFE ENVELOPE CHECK: Validate shape before accessing .success
-  // This prevents runtime crashes if backend returns different shape
-  if (
-    isRecord(unwrapped) &&
-    typeof unwrapped.success === "boolean" &&
-    "data" in unwrapped
-  ) {
-    // It's a valid envelope, cast and handle success/error
-    const env = unwrapped as TeacherApiEnvelope<T>;
-    if (!env.success) {
-      throw new Error(env.message || "Request failed");
-    }
-    return env.data;
-  }
-
-  // Fallback: raw data (non-enveloped response)
-  return unwrapped as T;
+  return unwrapData<T>(res);
 }
 
 /**
@@ -1170,8 +1160,14 @@ export function useTeacherDashboard({ lang }: { lang: Lang }) {
           body: JSON.stringify({ reason: reason ?? null }),
         });
         setSoftMsg(lang === "ar" ? "تم رفض الطلب." : "Lesson request rejected.");
-        const freshReqRaw = await tryFetchJson<unknown>("/teacher/lesson-requests/pending");
+        const [freshReqRaw, freshSessRaw] = await Promise.all([
+          tryFetchJson<unknown>("/teacher/lesson-requests/pending"),
+          tryFetchJson<unknown>(
+            `/teacher/lesson-sessions?from=${encodeURIComponent(sessions90DayFrom())}`
+          ),
+        ]);
         setPendingLessonRequests(asArray<PendingLessonRequestRow>(freshReqRaw));
+        setSessionsAll(asArray<LessonSessionRow>(freshSessRaw));
       } catch (e: unknown) {
         const deniedMessage = promoteTeacherOperationalDenial(e, {
           fatal: false,
