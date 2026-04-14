@@ -24,8 +24,9 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { API_BASE, apiFetch as sharedApiFetch } from "@/src/lib/api";
+import { API_BASE, apiFetch as sharedApiFetch, clearCsrfToken } from "@/src/lib/api";
 import type { ApiError } from "@/src/lib/api";
+import { clearParentCsrfToken } from "@/src/services/parentService";
 import type {
   ParentStudent,
   ParentSelection,
@@ -507,6 +508,12 @@ type SwitchToStudentData = {
   student_id: number;
 };
 
+function resetPostSwitchSessionCaches(): void {
+  clearCsrfToken();
+  clearParentCsrfToken();
+  window.dispatchEvent(new Event("auth:changed"));
+}
+
 export function useParentSwitchToStudent() {
   const [switching, setSwitching] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -525,6 +532,7 @@ export function useParentSwitchToStudent() {
         jsonBody: { student_user_id: studentUserId },
       });
 
+      resetPostSwitchSessionCaches();
       setLastSwitched(data);
       return { ok: true as const, data };
     } catch (err: unknown) {
@@ -568,6 +576,7 @@ export function useParentSwitchBack() {
         jsonBody: {},
       });
 
+      resetPostSwitchSessionCaches();
       return { ok: true as const, data };
     } catch (err: unknown) {
       if (err instanceof Error && err.message === "NOT_AUTHENTICATED") {

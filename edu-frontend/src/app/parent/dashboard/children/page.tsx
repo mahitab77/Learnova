@@ -59,8 +59,8 @@ function ParentChildrenPageContent() {
     if (!student.studentUserId) {
       alert(
         lang === "ar"
-          ? "حساب الابن غير متاح حالياً"
-          : "Child account is currently unavailable"
+          ? "هوية الابن غير مكتملة. يرجى التواصل مع الدعم."
+          : "Linked child identity is incomplete. Please contact support."
       );
       return;
     }
@@ -283,11 +283,11 @@ function ParentChildrenPageContent() {
     const childAccountStatus =
       lang === "ar"
         ? hasChildIdentity
-          ? "حساب الابن: موجود"
-          : "حساب الابن: غير متاح"
+          ? "هوية الابن: مكتملة"
+          : "هوية الابن: غير مكتملة (مشكلة بيانات)"
         : hasChildIdentity
-          ? "Child account: exists"
-          : "Child account: unavailable";
+          ? "Child identity: complete"
+          : "Child identity: incomplete (data integrity issue)";
     const directLoginStatus =
       lang === "ar"
         ? directLoginEnabled
@@ -350,7 +350,7 @@ function ParentChildrenPageContent() {
 
                   <div className="flex flex-wrap items-center gap-2 text-xs">
                     <span
-                      className={hasChildIdentity ? "text-slate-500" : "text-amber-600"}
+                      className={hasChildIdentity ? "text-slate-500" : "text-red-600"}
                     >
                       {childAccountStatus}
                     </span>
@@ -363,6 +363,16 @@ function ParentChildrenPageContent() {
                       {directLoginStatus}
                     </span>
                   </div>
+                  {!hasChildIdentity && (
+                    <div className="mt-1 inline-flex items-center gap-1 rounded-md bg-red-50 px-2 py-1 text-[11px] text-red-700 ring-1 ring-red-200">
+                      <AlertCircle className="h-3 w-3" />
+                      <span>
+                        {lang === "ar"
+                          ? "البيانات غير مكتملة. يرجى التواصل مع الدعم."
+                          : "Linked child identity is incomplete. Please contact support."}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -387,8 +397,8 @@ function ParentChildrenPageContent() {
               title={
                 !hasChildIdentity
                   ? lang === "ar"
-                    ? "حساب الابن غير متاح حالياً"
-                    : "Child account is currently unavailable"
+                    ? "هوية الابن غير مكتملة. يرجى التواصل مع الدعم."
+                    : "Linked child identity is incomplete. Please contact support."
                   : undefined
               }
             >

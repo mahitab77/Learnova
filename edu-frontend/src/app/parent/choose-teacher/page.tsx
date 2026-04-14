@@ -61,20 +61,16 @@ type TeacherOption = {
   ratingCount?: number | null;
 };
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null;
+}
+
 function normaliseTeacherOptions(data: unknown): TeacherOption[] {
-  if (
-    !data ||
-    typeof data !== "object" ||
-    !("success" in data) ||
-    (data as { success: unknown }).success !== true
-  ) {
-    return [];
+  if (!isRecord(data) || data.success !== true || !Array.isArray(data.data)) {
+    throw new Error("Invalid teacher-options response shape.");
   }
 
   const payload = data as TeacherOptionsResponse;
-  if (!("data" in payload) || !payload.data || !Array.isArray(payload.data)) {
-    return [];
-  }
 
   return payload.data.map((row: TeacherOptionRowApi) => ({
     id: row.teacher_id,
@@ -95,18 +91,18 @@ function normaliseTeacherOptions(data: unknown): TeacherOption[] {
 }
 
 function readEnvelopeFailureMessage(raw: unknown): string | null {
-  if (
-    raw &&
-    typeof raw === "object" &&
-    "success" in raw &&
-    (raw as { success: unknown }).success === false &&
-    "message" in raw &&
-    typeof (raw as { message?: unknown }).message === "string"
-  ) {
-    return (raw as { message: string }).message;
+  if (isRecord(raw) && raw.success === false && typeof raw.message === "string") {
+    return raw.message;
   }
 
   return null;
+}
+
+function normaliseSelections(raw: unknown): ParentSelectionApiRow[] {
+  if (!isRecord(raw) || raw.success !== true || !Array.isArray(raw.data)) {
+    throw new Error("Invalid parent selections response shape.");
+  }
+  return raw.data as ParentSelectionApiRow[];
 }
 
 /* =============================================================================
@@ -118,10 +114,6 @@ type ParentSelectionApiRow = {
   teacher_id: number | null;
   teacher_name: string | null;
 };
-
-type SelectionsEnvelope =
-  | { success: true; data: ParentSelectionApiRow[]; message?: string }
-  | { success: false; data?: never; message?: string };
 
 /* =============================================================================
  * Texts
@@ -314,18 +306,7 @@ function ChooseTeacherPageContent() {
           throw new Error(envelopeError);
         }
 
-        const env = raw as SelectionsEnvelope;
-        const list =
-          env &&
-          typeof env === "object" &&
-          "success" in env &&
-          (env as { success: unknown }).success === true
-            ? (env as { data?: unknown }).data
-            : null;
-
-        const rows = Array.isArray(list)
-          ? (list as ParentSelectionApiRow[])
-          : [];
+        const rows = normaliseSelections(raw);
         const row =
           rows.find((r) => Number(r.subject_id) === Number(subjectId)) ?? null;
 
@@ -487,6 +468,96 @@ function ChooseTeacherPageContent() {
         );
       }, 700);
     } catch (err: unknown) {
+      // Auto-fallback if detection was stale and backend indicates the opposite flow.
+      if (!hasCurrentTeacher && isCurrentTeacherConflict(err)) {
+        try {
+          const fallbackBody: {
+            student_id: number;
+            subject_id: number;
+            teacher_id?: number;
+            requested_teacher_id: number;
+            type: "change_teacher";
+            reason?: string;
+          } = {
+            student_id: studentId,
+            subject_id: subjectId,
+            requested_teacher_id: teacherId,
+            type: "change_teacher",
+          };
+          if (Number.isFinite(currentTeacherId)) {
+            fallbackBody.teacher_id = Number(currentTeacherId);
+          }
+          const cleanedReason = reason.trim();
+          if (cleanedReason.length > 0) fallbackBody.reason = cleanedReason;
+
+          await apiFetch<{
+            success: boolean;
+            message?: string;
+            data?: { requestId: number; type: string | null };
+          }>("/parent/requests", {
+            method: "POST",
+            json: fallbackBody,
+          });
+          setSaveSuccess(t.requestSuccess);
+          setTimeout(() => {
+            router.push(
+              lang === "ar" ? "/parent/requests?lang=ar" : "/parent/requests"
+            );
+          }, 700);
+          return;
+        } catch (fallbackErr: unknown) {
+          const msg = getSaveErrorMessage(
+            fallbackErr,
+            t.selectionError,
+            t.notAuthed
+          );
+          setSaveError(msg);
+          return;
+        }
+      }
+
+      if (hasCurrentTeacher && isNoCurrentTeacherConflict(err)) {
+        try {
+          const fallbackBody: {
+            student_id: number;
+            subject_id: number;
+            selection_id?: number;
+            teacher_id: number;
+          } = {
+            student_id: studentId,
+            subject_id: subjectId,
+            teacher_id: teacherId,
+          };
+          if (Number.isFinite(selectionId)) {
+            fallbackBody.selection_id = selectionId;
+          }
+
+          await apiFetch<{
+            success: boolean;
+            message?: string;
+            data?: {
+              selectionId: number | null;
+              studentId: number;
+              subjectId: number;
+              teacherId: number;
+            };
+          }>("/parent/teacher-options/select", {
+            method: "POST",
+            json: fallbackBody,
+          });
+          setSaveSuccess(t.selectionSuccess);
+          return;
+        } catch (fallbackErr: unknown) {
+          const msg = getSaveErrorMessage(
+            fallbackErr,
+            t.selectionError,
+            t.notAuthed
+          );
+          setSaveError(msg);
+          return;
+        }
+      }
+
       const msg = getSaveErrorMessage(err, t.selectionError, t.notAuthed);
       setSaveError(msg);
     } finally {
@@ -724,9 +795,7 @@ function ChooseTeacherPageContent() {
                 <button
                   type="button"
                   onClick={() => handleSelectTeacher(teacher.id)}
-                  disabled={
-                    savingTeacherId === teacher.id || detecting || !!detectError
-                  }
+                  disabled={savingTeacherId === teacher.id || detecting}
                   className="mt-auto inline-flex items-center justify-center rounded-md bg-emerald-500 px-3 py-2 text-[12px] font-semibold text-white shadow-sm hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-70"
                   title={
                     detectError
@@ -796,4 +865,22 @@ function getSaveErrorMessage(
 
   if (err instanceof Error) return err.message;
   return fallback;
+}
+
+function isCurrentTeacherConflict(err: unknown): boolean {
+  if (!isApiError(err)) return false;
+  const msg = String(err.message || "").toLowerCase();
+  return (
+    msg.includes("already has a current teacher") ||
+    msg.includes("use the change-request flow")
+  );
+}
+
+function isNoCurrentTeacherConflict(err: unknown): boolean {
+  if (!isApiError(err)) return false;
+  const msg = String(err.message || "").toLowerCase();
+  return (
+    msg.includes("no current teacher exists") ||
+    msg.includes("use the direct teacher selection flow")
+  );
 }

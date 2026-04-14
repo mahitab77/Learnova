@@ -22,6 +22,12 @@ export type SessionUser = {
 };
 
 export type SessionMeta = unknown;
+export type SessionSwitchContext = {
+  mode: "as_student";
+  parentUserId: number;
+  studentUserId: number;
+  switchedAt: string | null;
+} | null;
 
 /**
  * ✅ Recommended normalized shape for `/auth/me`
@@ -35,6 +41,7 @@ export type SessionMe = {
     user: SessionUser | null;
     meta: SessionMeta;
     activeStudentId: number | null;
+    switchContext: SessionSwitchContext;
   };
 };
 
@@ -93,6 +100,25 @@ function toBooleanOrUndefined(v: unknown): boolean | undefined {
   return typeof v === "boolean" ? v : undefined;
 }
 
+function parseSwitchContext(v: unknown): SessionSwitchContext {
+  if (!isRecord(v)) return null;
+  if (v.mode !== "as_student") return null;
+  const parentUserId = readNested(v, "parentUserId");
+  const studentUserId = readNested(v, "studentUserId");
+  const switchedAt = readNested(v, "switchedAt");
+
+  if (typeof parentUserId !== "number" || !Number.isFinite(parentUserId)) return null;
+  if (typeof studentUserId !== "number" || !Number.isFinite(studentUserId)) return null;
+  if (!(typeof switchedAt === "string" || switchedAt === null || switchedAt === undefined)) return null;
+
+  return {
+    mode: "as_student",
+    parentUserId,
+    studentUserId,
+    switchedAt: switchedAt === undefined ? null : switchedAt,
+  };
+}
+
 function parseSessionUser(v: unknown): SessionUser | null {
   if (!isRecord(v)) return null;
 
@@ -115,23 +141,32 @@ function parseSessionUser(v: unknown): SessionUser | null {
 }
 
 /**
- * Normalize `/auth/me` response for consistent UI usage.
- * Supports:
- * - 200 with { data: { user, meta, activeStudentId, authenticated? } }
- * - 200 with just { data: { user } } (we infer auth)
+ * Normalize strict `/auth/me` success envelope.
  */
 function normalizeMeResponse(raw: unknown): SessionMe {
+  if (!isRecord(raw) || readNested(raw, "success") !== true) {
+    throw new Error("Invalid /auth/me response envelope.");
+  }
   const data = readNested(raw, "data");
+  if (!isRecord(data)) {
+    throw new Error("Invalid /auth/me response payload.");
+  }
 
   const userRaw = readNested(data, "user");
   const user = parseSessionUser(userRaw);
 
   const meta = readNested(data, "meta") ?? {};
   const activeStudentId = toNumberOrNull(readNested(data, "activeStudentId"));
+  const switchContext = parseSwitchContext(readNested(data, "switchContext"));
 
-  // If backend provides `authenticated`, use it; otherwise infer from user presence.
   const authFromServer = toBooleanOrUndefined(readNested(data, "authenticated"));
-  const authenticated = authFromServer ?? Boolean(user?.id);
+  if (authFromServer === undefined) {
+    throw new Error("Invalid /auth/me authenticated flag.");
+  }
+  const authenticated = authFromServer;
+  if (authenticated && !user) {
+    throw new Error("Invalid /auth/me user payload.");
+  }
 
   return {
     success: true,
@@ -140,6 +175,7 @@ function normalizeMeResponse(raw: unknown): SessionMe {
       user: authenticated ? user : null,
       meta,
       activeStudentId: authenticated ? activeStudentId : null,
+      switchContext: authenticated ? switchContext : null,
     },
   };
 }
@@ -189,6 +225,7 @@ async me(): Promise<SessionMe> {
         user: null,
         meta: {},
         activeStudentId: null,
+        switchContext: null,
       },
     };
   }

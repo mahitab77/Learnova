@@ -49,7 +49,10 @@ import Link from "next/link";
 import Image from "next/image";
 
 import { useSearchParams, useRouter } from "next/navigation";
-import { apiFetch as sharedApiFetch } from "@/src/lib/api";
+import {
+  apiFetch as sharedApiFetch,
+  clearCsrfToken,
+} from "@/src/lib/api";
 import type { ApiError } from "@/src/lib/api";
 import {
   addCairoDays as sharedAddCairoDays,
@@ -64,6 +67,7 @@ import {
   startOfCairoWeekMonday as sharedStartOfWeekMonday,
 } from "@/src/lib/cairoTime";
 import { useSession } from "@/src/hooks/useSession";
+import { clearParentCsrfToken } from "@/src/services/parentService";
 
 import { texts } from "./studentTexts";
 import TeacherRatingModal from "./components/TeacherRatingModal";
@@ -991,6 +995,9 @@ function StudentDashboardPageContent() {
         method: "POST",
         body: {},
       });
+      clearCsrfToken();
+      clearParentCsrfToken();
+      window.dispatchEvent(new Event("auth:changed"));
       router.replace(`/parent/dashboard?lang=${lang}&tab=children`);
       router.refresh();
     } catch (err) {
@@ -1003,9 +1010,14 @@ function StudentDashboardPageContent() {
   const direction = lang === "ar" ? "rtl" : "ltr";
 
   const fromParam = searchParams.get("from");
-  const openedFromParent = fromParam === "parent";
+  const {
+    loading: sessionLoading,
+    authenticated,
+    switchContext,
+  } = useSession();
+  const openedFromParent =
+    switchContext?.mode === "as_student" || fromParam === "parent";
 
-  const { loading: sessionLoading, authenticated } = useSession();
   const notLoggedInError = !authenticated ? t.notLoggedIn : null;
 
   // ---------------------------------------------------------------------------
@@ -1803,43 +1815,6 @@ function StudentDashboardPageContent() {
   // ---------------------------------------------------------------------------
   // Booking helpers
   // ---------------------------------------------------------------------------
-
-  function hhmmFromSqlOrIso(dt: string | null): string | null {
-    if (!dt) return null;
-    const s = String(dt);
-    const timePart = s.includes("T") ? s.split("T")[1] : s.split(" ")[1];
-    if (!timePart) return null;
-    return timePart.slice(0, 5);
-  }
-
-  const getSlotDisabledState = useCallback(
-    (slot: BookableSlot): { disabled: boolean; reason?: "groupNotSupported" | "pendingRequest" } => {
-      if (slot.isGroup) return { disabled: true, reason: "groupNotSupported" };
-
-      const slotDate = slot.date;
-      const slotStart = hhmmFromSqlOrIso(slot.startsAt);
-      const slotEnd = hhmmFromSqlOrIso(slot.endsAt);
-
-      const pending = (pendingRequests ?? []).some((r) => {
-        if (r.status !== "pending") return false;
-        const reqSubjectId =
-          (r as unknown as { subjectId?: number }).subjectId ??
-          (r as unknown as { subject_id?: number }).subject_id ??
-          r.subject?.id ??
-          null;
-        if (reqSubjectId !== slot.subjectId) return false;
-        const reqDate = r.date ?? (r.startsAt ? String(r.startsAt).slice(0, 10) : null);
-        if (!reqDate || reqDate !== slotDate) return false;
-        const reqStart = hhmmFromSqlOrIso(r.startsAt);
-        const reqEnd = hhmmFromSqlOrIso(r.endsAt);
-        return !!slotStart && !!slotEnd && reqStart === slotStart && reqEnd === slotEnd;
-      });
-
-      if (pending) return { disabled: true, reason: "pendingRequest" };
-      return { disabled: false };
-    },
-    [pendingRequests],
-  );
 
   const markNotificationRead = useCallback(
     async (id: number) => {
@@ -2699,11 +2674,10 @@ function StudentDashboardPageContent() {
 
                       <div className="grid gap-2 md:grid-cols-2">
                         {bookableSlots.map((slot) => {
-                          const { disabled, reason } = getSlotDisabledState(slot);
                           return (
                             <div
                               key={`${slot.scheduleId}-${slot.date}-${slot.startsAt}`}
-                              className={`flex items-center justify-between rounded-xl px-3 py-2 text-xs ${disabled ? "bg-slate-100" : "bg-slate-50"}`}
+                              className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-xs"
                             >
                               <div className="flex-1">
                                 <div className="font-medium text-slate-900">
@@ -2715,30 +2689,13 @@ function StudentDashboardPageContent() {
                                   {formatTimeOnly(slot.startsAt, lang)}–
                                   {formatTimeOnly(slot.endsAt, lang)}
                                 </div>
-                                <div className="mt-1 flex items-center gap-2">
-                                  {reason === "groupNotSupported" && (
-                                    <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-medium text-slate-500">
-                                      {lang === "ar" ? "مجموعة · قريباً" : "Group · coming soon"}
-                                    </span>
-                                  )}
-                                  {reason === "pendingRequest" && (
-                                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
-                                      {t.labels.requested}
-                                    </span>
-                                  )}
-                                </div>
                               </div>
                               <button
-                                className={`ml-2 rounded-full px-3 py-1 text-[10px] font-medium ${
-                                  disabled
-                                    ? "cursor-not-allowed bg-slate-300 text-slate-500"
-                                    : "bg-emerald-500 text-white hover:bg-emerald-600"
-                                }`}
+                                className="ml-2 rounded-full bg-emerald-500 px-3 py-1 text-[10px] font-medium text-white hover:bg-emerald-600 disabled:opacity-60"
                                 onClick={() => {
-                                  if (disabled) return;
                                   setConfirmRequest({ show: true, slot });
                                 }}
-                                disabled={disabled || lessonReqState.loading}
+                                disabled={lessonReqState.loading}
                               >
                                 {lang === "ar" ? "اطلب هذا الموعد" : "Request this time"}
                               </button>

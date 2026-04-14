@@ -10,6 +10,7 @@ const LOGGED_OUT: SessionData = {
   user: null,
   meta: {},
   activeStudentId: null,
+  switchContext: null,
 };
 
 export function useSession() {
@@ -68,6 +69,7 @@ export function useSession() {
     user: me.user,
     meta: me.meta,
     activeStudentId: me.activeStudentId,
+    switchContext: me.switchContext,
     refresh,
     logout,
   };

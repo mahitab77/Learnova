@@ -320,37 +320,30 @@ function mapAvailableSubjects(
     .filter((x): x is OnboardingSubject => x !== null);
 }
 
-/**
- * ✅ FIX #1: Resilient /auth/me response normalization
- * Handles different backend response shapes:
- * - Shape A: { success, data: { authenticated, user, ... } }
- * - Shape B: { authenticated, user, ... } directly
- */
-function normalizeMeResponse(body: unknown): MePayload | null {
-  if (!body || typeof body !== "object") return null;
-
-  // Shape A: { success, data: { authenticated, user, ... } }
-  if ("data" in body) {
-    const data = (body as { data?: unknown }).data;
-    if (data && typeof data === "object" && "authenticated" in (data as Record<string, unknown>)) {
-      return data as MePayload;
-    }
-  }
-
-  // Shape B: { authenticated, user, ... } directly
-  if ("authenticated" in body) {
-    return body as MePayload;
-  }
-
-  return null;
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null;
 }
 
 /**
- * Some endpoints return either:
- * - array of teachers
- * - { success, data: [] }
+ * Strict `/auth/me` contract:
+ * { success: true, data: { authenticated, user, activeStudentId?, meta? } }
+ */
+function normalizeMeResponse(body: unknown): MePayload | null {
+  if (!isRecord(body) || body.success !== true || !isRecord(body.data)) return null;
+  const data = body.data;
+  if (typeof data.authenticated !== "boolean") return null;
+  return data as MePayload;
+}
+
+/**
+ * Strict teachers discovery contract:
+ * { success: true, data: Teacher[] }
  */
 function normalizeTeachers(body: unknown): OnboardingTeacher[] {
+  if (!isRecord(body) || body.success !== true || !Array.isArray(body.data)) {
+    throw new Error("Invalid teachers discovery response shape.");
+  }
+
   const normalized: OnboardingTeacher[] = [];
 
   const normalizeTeacherRow = (row: unknown): OnboardingTeacher | null => {
@@ -376,20 +369,9 @@ function normalizeTeachers(body: unknown): OnboardingTeacher[] {
     return { id: String(idSource), name, ratingAvg, ratingCount };
   };
 
-  if (Array.isArray(body)) {
-    for (const item of body) {
-      const t = normalizeTeacherRow(item);
-      if (t) normalized.push(t);
-    }
-    return normalized;
-  }
-
-  if (body && typeof body === "object" && "data" in body && Array.isArray((body as { data: unknown }).data)) {
-    for (const item of (body as { data: unknown[] }).data) {
-      const t = normalizeTeacherRow(item);
-      if (t) normalized.push(t);
-    }
-    return normalized;
+  for (const item of body.data) {
+    const t = normalizeTeacherRow(item);
+    if (t) normalized.push(t);
   }
 
   return normalized;
@@ -416,16 +398,8 @@ function resolveMediaUrl(rawUrl: string | null): string | null {
 }
 
 function normalizeTeacherDetails(body: unknown, fallbackId: string): TeacherDetails | null {
-  // Accept either raw object OR { success, data: object }
-  const raw = (() => {
-    if (body && typeof body === "object" && "data" in body) {
-      const maybe = body as { data?: unknown };
-      return maybe.data ?? body;
-    }
-    return body;
-  })();
-
-  if (!raw || typeof raw !== "object") return null;
+  if (!isRecord(body) || body.success !== true || !isRecord(body.data)) return null;
+  const raw = body.data;
 
   const r = raw as {
     id?: number | string;
@@ -635,7 +609,6 @@ function StudentOnboardingContent() {
     };
 
     void run();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authResolved, me]);
 
   const handleSaveScope = useCallback(async () => {

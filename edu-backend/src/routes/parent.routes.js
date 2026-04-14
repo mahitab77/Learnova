@@ -1,6 +1,6 @@
 // src/routes/parent.routes.js
 import express from "express";
-import { requireUser, requireSessionUser } from "../middlewares/auth.js";
+import { requireSessionUser } from "../middlewares/auth.js";
 import { validateRequest } from "../middlewares/requestValidation.js";
 import { validateParentTeacherChange } from "../validation/highRiskMutations.js";
 
@@ -41,7 +41,7 @@ const router = express.Router();
  * Parent Routes - Auth policy
  * -----------------------------------------------------------------------------
  * Tier B (HIGH RISK): session-only switching
- * Tier A (General): requireUser (session in prod, optional dev header in dev)
+ * Tier A (General): session-only parent operations
  * -----------------------------------------------------------------------------
  */
 
@@ -55,9 +55,9 @@ router.post("/switch-to-student", requireSessionUser, switchToStudent);
 router.post("/switch-back", requireSessionUser, switchBackToParent);
 
 /* =============================================================================
- * Tier A: General parent endpoints
+ * Tier A: General parent endpoints (session-only)
  * ============================================================================= */
-router.use(requireUser);
+router.use(requireSessionUser);
 
 // DEV/utility: ensure parents row exists
 router.post("/ensure-profile", ensureParentProfile);

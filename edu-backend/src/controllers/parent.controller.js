@@ -58,31 +58,6 @@ async function findStudentById(studentId) {
   return rows.length ? rows[0] : null;
 }
 
-/**
- * Ensure the student's linked user profile is active.
- * This keeps parent discovery/selection aligned with student-side availability
- * and booking, which already require an active student user context.
- * @param {number|null|undefined} studentUserId - ID from `users` table
- * @returns {Promise<boolean>}
- */
-async function studentUserIsActive(studentUserId) {
-  if (!studentUserId) return false;
-
-  const [rows] = await pool.query(
-    `
-    SELECT 1
-    FROM users
-    WHERE id = ?
-      AND role = 'student'
-      AND is_active = 1
-    LIMIT 1
-    `,
-    [studentUserId]
-  );
-
-  return rows.length > 0;
-}
-
 async function findActiveTeacherSelectionForStudentSubject(studentId, subjectId) {
   const [rows] = await pool.query(
     `
@@ -207,15 +182,6 @@ async function loadParentTeacherFlowContext({
       ok: false,
       status: 404,
       message: "Student not found.",
-    };
-  }
-
-  const hasActiveStudentUser = await studentUserIsActive(student.user_id);
-  if (!hasActiveStudentUser) {
-    return {
-      ok: false,
-      status: 404,
-      message: "Active student profile not found.",
     };
   }
 
@@ -1281,14 +1247,6 @@ export const getParentTeacherOptions = async (req, res) => {
       });
     }
 
-    const hasActiveStudentUser = await studentUserIsActive(student.user_id);
-    if (!hasActiveStudentUser) {
-      return res.status(404).json({
-        success: false,
-        message: "Active student profile not found.",
-      });
-    }
-
     const eligibleTeachers = await listEligibleTeacherIdsForChild(
       student,
       numericSubjectId
@@ -1301,8 +1259,19 @@ export const getParentTeacherOptions = async (req, res) => {
     }
 
     const { teacherIds: eligibleTeacherIds } = eligibleTeachers;
+    const currentSelection = await findActiveTeacherSelectionForStudentSubject(
+      numericStudentId,
+      numericSubjectId
+    );
+    const currentTeacherId = currentSelection?.teacher_id
+      ? Number(currentSelection.teacher_id)
+      : null;
+    const filteredTeacherIds =
+      currentTeacherId != null
+        ? eligibleTeacherIds.filter((teacherId) => Number(teacherId) !== currentTeacherId)
+        : eligibleTeacherIds;
 
-    if (!eligibleTeacherIds.length) {
+    if (!filteredTeacherIds.length) {
       return res.json({
         success: true,
         data: [],
@@ -1355,7 +1324,7 @@ export const getParentTeacherOptions = async (req, res) => {
       [
         numericSubjectId,
         numericSubjectId,
-        eligibleTeacherIds,
+        filteredTeacherIds,
       ]
     );
 
@@ -1621,26 +1590,16 @@ export const switchToStudent = async (req, res) => {
 
     const studentUser = uRows[0];
 
-    const directLoginEnabled = isEnabledFlag(linkRows[0].has_own_login);
-
-    // 7) Enforce safe active policy:
-    //    - If direct login is enabled and the student is inactive -> do NOT override
-    //    - If direct login is disabled, allow parent-switched student context by activating them
+    // 7) Enforce canonical account-state policy:
+    //    Inactive child accounts are not switchable and must never be reactivated
+    //    implicitly by identity switching.
     if (!studentUser.is_active) {
-      if (directLoginEnabled) {
-        return res.status(403).json({
-          success: false,
-          message:
-            "This student account is inactive. Please contact support or switch to a different student.",
-          code: "STUDENT_INACTIVE",
-        });
-      }
-
-      // Direct login is disabled, so parent-switched access may still proceed.
-      await pool.query("UPDATE users SET is_active = 1 WHERE id = ? LIMIT 1", [
-        studentUserId,
-      ]);
-      studentUser.is_active = 1;
+      return res.status(403).json({
+        success: false,
+        message:
+          "This student account is inactive. Please contact support or switch to a different student.",
+        code: "STUDENT_INACTIVE",
+      });
     }
 
     // 8) Rotate session id (prevents session fixation)
@@ -1749,14 +1708,70 @@ export const switchBackToParent = async (req, res) => {
       });
     }
 
-    // 3) Rotate session id again when switching identities (best practice)
+    // 3) Re-validate parent identity against current DB state before restore.
+    const [parentUserRows] = await pool.query(
+      `
+      SELECT id, role, is_active
+      FROM users
+      WHERE id = ?
+      LIMIT 1
+      `,
+      [parentUser.id]
+    );
+
+    const clearSwitchSnapshot = async () => {
+      delete req.session.parent_user;
+      delete req.session.switch_ctx;
+      await new Promise((resolve) => {
+        req.session.save(() => resolve());
+      });
+    };
+
+    if (!parentUserRows.length) {
+      await clearSwitchSnapshot();
+      return res.status(401).json({
+        success: false,
+        message: "Parent account could not be restored because it no longer exists.",
+        code: "PARENT_RESTORE_INVALID",
+      });
+    }
+
+    const dbParentUser = parentUserRows[0];
+    if (String(dbParentUser.role || "").toLowerCase() !== "parent" || !dbParentUser.is_active) {
+      await clearSwitchSnapshot();
+      return res.status(403).json({
+        success: false,
+        message: "Parent account is not active or no longer eligible for restore.",
+        code: "PARENT_ACCOUNT_INACTIVE",
+      });
+    }
+
+    const [parentProfileRows] = await pool.query(
+      `
+      SELECT id
+      FROM parents
+      WHERE user_id = ?
+      LIMIT 1
+      `,
+      [parentUser.id]
+    );
+    if (!parentProfileRows.length) {
+      await clearSwitchSnapshot();
+      return res.status(403).json({
+        success: false,
+        message: "Parent profile is missing and cannot be restored.",
+        code: "PARENT_RESTORE_INVALID",
+      });
+    }
+
+    // 4) Rotate session id again when switching identities (best practice)
     await new Promise((resolve, reject) => {
       req.session.regenerate((err) => (err ? reject(err) : resolve()));
     });
 
-    // 4) Restore parent identity and clear switch data
+    // 5) Restore parent identity and clear switch data
     req.session.user = {
-      id: parentUser.id,
+      id: dbParentUser.id,
       role: "parent",
       full_name: parentUser.full_name || "",
       email: parentUser.email ?? null,
@@ -1765,7 +1780,7 @@ export const switchBackToParent = async (req, res) => {
     delete req.session.parent_user;
     delete req.session.switch_ctx;
 
-    // 5) Persist session
+    // 6) Persist session
     await new Promise((resolve, reject) => {
       req.session.save((err) => (err ? reject(err) : resolve()));
     });

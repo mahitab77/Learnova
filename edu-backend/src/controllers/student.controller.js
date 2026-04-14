@@ -2897,32 +2897,19 @@ export async function cancelMyLessonRequest(req, res) {
       `
       UPDATE lesson_sessions
       SET status = 'cancelled',
-          updated_by_user_id = ?
+          updated_by_user_id = ?,
+          cancelled_by = ?,
+          cancel_reason = COALESCE(?, cancel_reason)
       WHERE id = ?
         AND status = 'pending'
       `,
-      [userId, sessionId]
+      [userId, cancelledBy, reason, sessionId]
     );
 
     if (!u1 || u1.affectedRows === 0) {
       await conn.rollback();
       txStarted = false;
       return badRequest(res, "Unable to cancel this request (it may have changed).");
-    }
-
-    // Optional metadata update (best-effort)
-    try {
-      await conn.query(
-        `
-        UPDATE lesson_sessions
-        SET cancelled_by = ?,
-            cancel_reason = COALESCE(?, cancel_reason)
-        WHERE id = ?
-        `,
-        [cancelledBy, reason, sessionId]
-      );
-    } catch (err) {
-      logErr("cancelMyLessonRequest.optional_metadata", err);
     }
 
     // Notify teacher (best-effort)

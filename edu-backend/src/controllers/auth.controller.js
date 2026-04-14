@@ -227,11 +227,31 @@ function validateSchedule(schedule, rawSchedule = schedule) {
  * ========================================================================= */
 export const me = async (req, res) => {
   const u = req.session?.user;
+  const rawSwitchCtx = req.session?.switch_ctx;
+  const switchContext =
+    rawSwitchCtx &&
+    rawSwitchCtx.mode === "as_student" &&
+    Number.isFinite(Number(rawSwitchCtx.parent_user_id)) &&
+    Number.isFinite(Number(rawSwitchCtx.student_user_id))
+      ? {
+          mode: "as_student",
+          parentUserId: Number(rawSwitchCtx.parent_user_id),
+          studentUserId: Number(rawSwitchCtx.student_user_id),
+          switchedAt:
+            typeof rawSwitchCtx.switched_at === "string" ? rawSwitchCtx.switched_at : null,
+        }
+      : null;
 
   if (!u?.id) {
     return res.status(200).json({
       success: true,
-      data: { authenticated: false, user: null, meta: {}, activeStudentId: null },
+      data: {
+        authenticated: false,
+        user: null,
+        meta: {},
+        activeStudentId: null,
+        switchContext: null,
+      },
     });
   }
 
@@ -242,6 +262,7 @@ export const me = async (req, res) => {
       user: u,
       meta: req.session?.meta || {},
       activeStudentId: req.session?.activeStudentId ?? null,
+      switchContext,
     },
   });
 };
