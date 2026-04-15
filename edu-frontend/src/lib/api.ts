@@ -106,23 +106,23 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
     body = JSON.stringify(options.json);
   }
 
-  // Attach CSRF token for all state-mutating methods
+  // Attach CSRF token for state-mutating methods except explicit
+  // unauthenticated auth-entry routes.
   const method = (options.method ?? "GET").toUpperCase();
   if (MUTATING_METHODS.has(method)) {
     const isPublicEntryMutation = isPublicAuthEntryMutation(path, method);
-    const csrf = await getCsrfToken();
-    // Public auth-entry mutations must stay usable pre-login. We still attach
-    // CSRF when available (e.g. existing session) but only fail-closed on
-    // authenticated/operational mutation routes.
-    if (!csrf && !isPublicEntryMutation) {
-      const csrfError: ApiError = {
-        status: 403,
-        code: "CSRF_TOKEN_UNAVAILABLE",
-        message: "CSRF token is required for state-changing requests.",
-      };
-      throw csrfError;
+    if (!isPublicEntryMutation) {
+      const csrf = await getCsrfToken();
+      if (!csrf) {
+        const csrfError: ApiError = {
+          status: 403,
+          code: "CSRF_TOKEN_UNAVAILABLE",
+          message: "CSRF token is required for state-changing requests.",
+        };
+        throw csrfError;
+      }
+      headers.set("X-CSRF-Token", csrf);
     }
-    if (csrf) headers.set("X-CSRF-Token", csrf);
   }
 
   const res = await fetch(url, {
