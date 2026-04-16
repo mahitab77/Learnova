@@ -46,7 +46,14 @@ const router = express.Router();
  *   - We also do best-effort cleanup of already-uploaded files when an error happens.
  */
 
-const uploadDir = path.join(process.cwd(), "uploads", "teacher-videos");
+//const uploadDir = path.join(process.cwd(), "uploads", "teacher-videos");
+//fs.mkdirSync(uploadDir, { recursive: true });
+
+const uploadBaseDir = process.env.VERCEL
+  ? "/tmp/uploads"
+  : path.resolve("uploads");
+
+const uploadDir = path.join(uploadBaseDir, "teacher-videos");
 fs.mkdirSync(uploadDir, { recursive: true });
 
 const ALLOWED_VIDEO_MIME = new Set([
