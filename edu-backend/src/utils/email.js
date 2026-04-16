@@ -4,31 +4,38 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-let transporter;
 const isProd = process.env.NODE_ENV === "production";
+
 const hasEmailConfig =
   Boolean(process.env.EMAIL_HOST) &&
   Boolean(process.env.EMAIL_PORT) &&
   Boolean(process.env.EMAIL_USER) &&
-  Boolean(process.env.EMAIL_PASS);
+  Boolean(process.env.EMAIL_PASS) &&
+  Boolean(process.env.EMAIL_FROM);
 
-// if SMTP is configured, create real transporter
+let transporter = null;
+
 if (hasEmailConfig) {
   transporter = nodemailer.createTransport({
     host: process.env.EMAIL_HOST,
     port: Number(process.env.EMAIL_PORT) || 587,
-    secure: false,
+    secure: Number(process.env.EMAIL_PORT) === 465,
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
     },
   });
 } else {
-  const message = "EMAIL_* env vars are not fully configured. OTP mail delivery is unavailable.";
-  if (isProd) {
-    throw new Error(`[email] FATAL: ${message}`);
-  }
-  console.warn(`⚠️ ${message} OTP emails will be logged only in non-production mode.`);
+  const message =
+    "EMAIL_* env vars are not fully configured. Email sending is disabled.";
+  console.warn(`⚠️ [email] ${message}`);
+}
+
+/**
+ * Optional helper so routes/controllers can check availability
+ */
+export function isEmailConfigured() {
+  return hasEmailConfig;
 }
 
 /**
@@ -40,14 +47,17 @@ export async function sendOtpEmail(to, otp, name = "") {
 
   if (!transporter) {
     if (isProd) {
-      throw new Error("[email] OTP email transporter is not configured in production.");
+      throw new Error(
+        "Email service is not configured. OTP email cannot be sent."
+      );
     }
+
     console.log("📧 (DEV) OTP email to:", to, "code:", otp);
     return;
   }
 
   await transporter.sendMail({
-    from: process.env.EMAIL_USER,
+    from: process.env.EMAIL_FROM,
     to,
     subject,
     text,
