@@ -1043,7 +1043,7 @@ function HomeContent() {
           <div className="mt-14 grid items-start gap-10 overflow-visible lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
             <div className="relative z-30 overflow-visible lg:-translate-x-4">
               <div className="relative rounded-3xl p-2 overflow-visible">
-                <SolarSystem lang={lang} />
+                <SolarSystem lang={lang} activeKey={activeTrack} onSelect={setActiveTrack} />
               </div>
             </div>
 
