@@ -760,10 +760,11 @@ function HomeContent() {
 
         <main
           id="home"
-          className="relative mx-auto flex max-w-6xl flex-col gap-8 px-4 sm:px-6 lg:flex-row lg:items-center lg:px-0"
+          className="relative mx-auto flex max-w-6xl flex-col gap-8 px-4 sm:px-6 lg:flex-row lg:items-start lg:px-0 pt-8.75 lg:pt-10.75"
           style={{ minHeight: "calc(100vh - 80px)" }}
+          suppressHydrationWarning
         >
-          <section className="mt-2 flex-1 rounded-3xl bg-white px-8 py-12 shadow-[0_30px_80px_rgba(0,0,0,0.08)]">
+          <section className="flex-1 rounded-3xl bg-white px-8 py-12 shadow-[0_30px_80px_rgba(0,0,0,0.08)]">
             <span className="inline-flex items-center gap-2 rounded-full bg-[#FDCF2F]/30 px-3 py-1 text-xs font-semibold text-[#111624]">
               <span className="inline-block h-2 w-2 rounded-full bg-[#A2BF00]" />
               {lang === "en" ? "Online learning platform" : "منصة تعليمية أونلاين"}
@@ -812,7 +813,10 @@ function HomeContent() {
                 <ArrowRight className="h-4 w-4" />
               </a>
 
-              <button className="inline-flex items-center gap-2 text-sm font-semibold text-[#111624]">
+              <button
+                type="button"
+                className="inline-flex items-center gap-2 text-sm font-semibold text-[#111624]"
+              >
                 <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#08ABD3] text-white">
                   <Play className="h-6 w-6" />
                 </span>
@@ -849,7 +853,7 @@ function HomeContent() {
             </div>
           </section>
 
-          <section className="relative flex-1 space-y-6 py-6">
+          <section className="relative flex-1 space-y-6 pt-4 pb-6">
             <div className="absolute -right-4 -top-4 h-20 w-20 rounded-full bg-[#FDCF2F]/20 blur-lg" />
             <div className="absolute bottom-10 left-0 h-16 w-16 rounded-full bg-[#08ABD3]/20 blur-md" />
 
@@ -940,10 +944,15 @@ function HomeContent() {
           {/* Animated Down Button - Bottom Center of Hero */}
           <button
             onClick={scrollToPlanet}
-            className="absolute -bottom-8 left-1/2 z-20 -translate-x-1/2 transform cursor-pointer rounded-full bg-white/90 p-3 shadow-xl backdrop-blur-sm transition-all duration-300 hover:bg-white hover:shadow-2xl focus:outline-none focus:ring-2 focus:ring-[#A2BF00] focus:ring-offset-2"
+            className="absolute left-1/2 z-20 -translate-x-1/2 cursor-pointer transition-all duration-300 hover:-translate-y-1 focus:outline-none"
+            style={{ bottom: "3.75rem" }}
             aria-label={lang === "en" ? "Scroll to planet section" : "انتقل إلى قسم الكوكب"}
+            suppressHydrationWarning
           >
-            <ChevronDown className="h-6 w-6 text-[#111624] animate-bounce" />
+            <ChevronDown
+              className="h-10 w-10 text-slate-100 drop-shadow-[0_10px_20px_rgba(0,0,0,0.25)]"
+              strokeWidth={3}
+            />
           </button>
         </main>
       </div>

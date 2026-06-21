@@ -384,24 +384,37 @@ const MainNavbar: FC = () => {
   const dashboardHref = getDashboardHrefByRole(u?.role);
 
   return (
-    <div className="bg-[#F18A68]" dir={isRTL ? "rtl" : "ltr"}>
-      <header className="relative mx-auto flex h-20 max-w-6xl items-center justify-between px-4 sm:px-6 lg:px-0">
+    <div className="bg-[#F18A68] overflow-visible" dir={isRTL ? "rtl" : "ltr"}>
+      <header className="relative mx-auto flex h-28 max-w-6xl items-center justify-between overflow-visible px-4 sm:px-6 lg:px-0">
         {/* Logo + Brand */}
-        <div className="flex items-center gap-4">
+        <div className="relative flex items-center gap-4">
           <Link
             href={withLang("/", lang)}
-            className="flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-lg transition-all duration-300 hover:scale-105 hover:shadow-xl"
+            className="flex h-24 w-24 items-center justify-center rounded-full bg-linear-to-b from-white via-gray-50 to-gray-200 transition-shadow duration-300 -ml-6 -mt-6 -mb-6"
+            style={{
+              boxShadow: "0 0 0 1px #ffffff, 0 0 0 1px #d1d5db, 0 2px 8px rgba(0, 0, 0, 0.15), inset 0 2px 4px rgba(255,255,255,0.9), inset 0 -8px 15px rgba(0,0,0,0.12), inset -3px -3px 8px rgba(0,0,0,0.08)"
+            }}
+            suppressHydrationWarning
+            onMouseEnter={(e) => {
+              e.currentTarget.style.boxShadow = "0 0 0 1px #ffffff, 0 0 0 1px #d1d5db, 0 0 30px rgba(255,255,255,0.8)";
+              e.currentTarget.style.transform = "scale(0.97) translateY(2px)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.boxShadow = "0 0 0 1px #ffffff, 0 0 0 1px #d1d5db, 0 2px 8px rgba(0, 0, 0, 0.15), inset 0 2px 4px rgba(255,255,255,0.9), inset 0 -8px 15px rgba(0,0,0,0.12), inset -3px -3px 8px rgba(0,0,0,0.08)";
+              e.currentTarget.style.transform = "scale(1) translateY(0)";
+            }}
             aria-label="LearnNova Home"
           >
             <Image
               src="/logo.png"
               alt="LearnNova"
-              width={40}
-              height={40}
+              width={64}
+              height={64}
               className="rounded-full object-cover"
             />
           </Link>
 
+          {/* Brand text with adjusted spacing for logo */}
           <div className={`hidden md:block ${textAlign}`}>
             <p className="text-lg font-bold leading-tight text-white">LearnNova</p>
             <p className="text-sm leading-tight text-white/80">
