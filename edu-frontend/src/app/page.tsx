@@ -33,6 +33,7 @@ import { Suspense, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import nextDynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
+import type { TrackKey } from "@/src/components/SolarSystem";
 import {
   Play,
   ArrowRight,
@@ -53,7 +54,15 @@ import {
  * Dynamic import (typed) — ensures <SolarSystem lang={lang} /> is type-safe
  * ============================================================================= */
 type Lang = "en" | "ar";
-const SolarSystem = nextDynamic<{ lang: Lang }>(
+
+type SolarSystemProps = {
+  lang: Lang;
+  activeKey?: TrackKey;
+  onSelect?: (key: TrackKey) => void;
+  disabled?: boolean;
+};
+
+const SolarSystem = nextDynamic<SolarSystemProps>(
   () => import("@/src/components/SolarSystem"),
   {
     ssr: false,
@@ -402,13 +411,6 @@ function Carousel({ lang, items }: { lang: Lang; items: CarouselItem[] }) {
 /* =============================================================================
  * Sticky Notes — softer colors + shorter width + centered distribution
  * ============================================================================= */
-type TrackKey =
-  | "curriculum"
-  | "quran"
-  | "arabic_non_native"
-  | "arts_skills"
-  | "courses";
-
 function StickyNotesRail({
   isRTL,
   activeKey,

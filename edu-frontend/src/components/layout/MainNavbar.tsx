@@ -411,6 +411,7 @@ const MainNavbar: FC = () => {
               width={64}
               height={64}
               className="rounded-full object-cover"
+              loading="eager"
             />
           </Link>
 
